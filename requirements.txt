@@ -1,6 +1,7 @@
 # Apify SDK and Crawlee
 apify~=2.0.0
 crawlee[beautifulsoup,playwright]~=0.4.2
+pydantic<2.0.0
 
 # Content extraction and processing
 beautifulsoup4>=4.12.0
