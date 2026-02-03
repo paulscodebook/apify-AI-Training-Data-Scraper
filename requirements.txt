@@ -1,6 +1,6 @@
 # Apify SDK and Crawlee
 apify>=1.7.0
-crawlee[beautifulsoup,playwright]>=0.3.0
+crawlee[beautifulsoup,playwright]>=0.6.0
 
 # Content extraction and processing
 beautifulsoup4>=4.12.0

@@ -12,10 +12,8 @@ from typing import Optional, Dict, Any, List
 import re
 
 from apify import Actor
-from crawlee.beautifulsoup_crawler import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
-from crawlee.playwright_crawler import PlaywrightCrawler, PlaywrightCrawlingContext
-from crawlee import Request
-from crawlee.configuration import Configuration
+from crawlee.crawlers import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
+from crawlee.crawlers import PlaywrightCrawler, PlaywrightCrawlingContext
 
 from .content_extractor import ContentExtractor
 from .chunking import ChunkingEngine
