@@ -9,15 +9,28 @@ import sys
 # This MUST run before anything else is imported
 try:
     import browserforge.download as bfd
+    from pathlib import Path
+    
+    # Ensure DATA_FILES exists and has the required keys
     if not hasattr(bfd, 'DATA_FILES'):
-        # Map DATA_DIRS to DATA_FILES if available, otherwise use a safe default
-        bfd.DATA_FILES = getattr(bfd, 'DATA_DIRS', {'headers': []})
+        bfd.DATA_FILES = {}
     
-    # Ensure the 'headers' key exists as crawlee specifically checks for it
-    if isinstance(bfd.DATA_FILES, dict) and 'headers' not in bfd.DATA_FILES:
-        bfd.DATA_FILES['headers'] = []
+    # Ensure DATA_DIRS exists and has the required keys
+    if not hasattr(bfd, 'DATA_DIRS'):
+        bfd.DATA_DIRS = {}
+
+    # Setup safe defaults for keys crawlee expects
+    for d in [bfd.DATA_FILES, bfd.DATA_DIRS]:
+        if 'headers' not in d:
+            d['headers'] = [] if d is bfd.DATA_FILES else Path("/tmp")
+        if 'fingerprints' not in d:
+            # For DATA_FILES, it needs to be a dict-like object to support [path.name]
+            class MockDict(dict):
+                def __getitem__(self, key):
+                    return super().get(key, key)
+            d['fingerprints'] = MockDict() if d is bfd.DATA_FILES else Path("/tmp")
     
-    # Inject it into sys.modules to ensure all subsequent imports see the patch
+    # Inject it into sys.modules
     sys.modules['browserforge.download'] = bfd
 except Exception:
     pass
