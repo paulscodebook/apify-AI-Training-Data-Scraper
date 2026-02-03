@@ -6,7 +6,7 @@ producing clean, chunked data optimized for LLMs and vector databases.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse, urljoin
 from typing import Optional, Dict, Any, List
 import re
@@ -129,7 +129,7 @@ class AITrainingDataScraper:
         crawler = BeautifulSoupCrawler(
             max_requests_per_crawl=self.max_pages,
             max_request_retries=3,
-            request_handler_timeout=self.request_timeout * 1000,  # Convert to ms
+            request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
         )
 
@@ -145,7 +145,7 @@ class AITrainingDataScraper:
         crawler = PlaywrightCrawler(
             max_requests_per_crawl=self.max_pages,
             max_request_retries=3,
-            request_handler_timeout=self.request_timeout * 1000,  # Convert to ms
+            request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
             headless=True,
         )
