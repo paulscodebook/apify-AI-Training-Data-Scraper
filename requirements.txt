@@ -1,7 +1,6 @@
 # Apify SDK and Crawlee
 apify>=1.8.0
 crawlee[beautifulsoup,playwright]>=0.7.1
-browserforge==1.1.2
 
 # Content extraction and processing
 beautifulsoup4>=4.12.0
