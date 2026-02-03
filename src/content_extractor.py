@@ -41,6 +41,7 @@ class ContentExtractor:
         self.html_converter.body_width = 0  # Don't wrap lines
         self.html_converter.unicode_snob = True
         self.html_converter.skip_internal_links = True
+        self.html_converter.fenced_code = True
 
     def extract(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         """

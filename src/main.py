@@ -208,7 +208,7 @@ class AITrainingDataScraper:
 
         # Apply chunking
         chunks = self.chunking_engine.chunk(
-            extracted["content"],
+            extracted["markdown"] or extracted["content"],
             url=url,
             title=extracted.get("title", "")
         )
