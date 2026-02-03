@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-training-data-scraper"
+version = "1.0.0"
+description = "Extract clean, semantically-chunked content from websites optimized for LLMs, RAG pipelines, and vector databases"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "AI Training Data Scraper Team"}
+]
+keywords = [
+    "apify",
+    "scraper",
+    "llm",
+    "rag",
+    "vector-database",
+    "chunking",
+    "embeddings",
+    "web-scraping",
+    "nlp"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "apify>=1.7.0",
+    "crawlee[beautifulsoup,playwright]>=0.3.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "readability-lxml>=0.8.0",
+    "html2text>=2024.2.0",
+    "markdownify>=0.12.0",
+    "nltk>=3.8.0",
+    "tiktoken>=0.7.0",
+    "sentence-transformers>=2.7.0",
+    "langdetect>=1.0.9",
+    "python-dateutil>=2.8.0",
+    "numpy>=1.24.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://apify.com/ai-training-data-scraper"
+Documentation = "https://github.com/ai-training-data-scraper/README.md"
+Repository = "https://github.com/ai-training-data-scraper"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100

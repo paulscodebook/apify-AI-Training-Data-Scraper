@@ -1,0 +1,202 @@
+{
+    "title": "AI Training Data Scraper",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "startUrls": {
+            "title": "Start URLs",
+            "type": "array",
+            "description": "List of URLs to begin crawling (documentation sites, forums, knowledge bases). The scraper will recursively crawl linked pages within the same domain.",
+            "editor": "requestListSources",
+            "prefill": [
+                {
+                    "url": "https://docs.python.org/3/"
+                }
+            ]
+        },
+        "crawlerType": {
+            "title": "Crawler Type",
+            "type": "string",
+            "description": "Choose based on website complexity. Use 'cheerio' for static HTML sites (10x faster), 'playwright' for JavaScript-heavy sites that require rendering.",
+            "enum": [
+                "cheerio",
+                "playwright"
+            ],
+            "enumTitles": [
+                "Fast HTTP (Static Sites)",
+                "Browser (JS-Heavy Sites)"
+            ],
+            "default": "cheerio"
+        },
+        "maxCrawlPages": {
+            "title": "Max Pages to Crawl",
+            "type": "integer",
+            "description": "Maximum number of pages to process. Higher values will take longer but provide more comprehensive data.",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 10000
+        },
+        "maxCrawlDepth": {
+            "title": "Max Crawl Depth",
+            "type": "integer",
+            "description": "How many levels deep to crawl from start URLs. Depth 1 = only start URLs, Depth 2 = start URLs + their links, etc.",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+        },
+        "chunkingStrategy": {
+            "title": "Chunking Strategy",
+            "type": "string",
+            "description": "How to split content into chunks for embedding. 'semantic' is recommended for best RAG performance.",
+            "enum": [
+                "fixed_token",
+                "sentence_based",
+                "semantic",
+                "markdown_section"
+            ],
+            "enumTitles": [
+                "Fixed Token (512 tokens per chunk)",
+                "Sentence-Based (Preserve sentences)",
+                "Semantic (Group related content)",
+                "Markdown Section (Split by headings)"
+            ],
+            "default": "semantic"
+        },
+        "chunkSize": {
+            "title": "Target Chunk Size",
+            "type": "integer",
+            "description": "Target size in tokens (for fixed_token) or words (for other strategies). 512 is optimal for most embedding models.",
+            "default": 512,
+            "minimum": 128,
+            "maximum": 2048
+        },
+        "chunkOverlap": {
+            "title": "Chunk Overlap",
+            "type": "integer",
+            "description": "Number of tokens/words to overlap between chunks. Prevents context loss at chunk boundaries. Recommended: 15-20% of chunk size.",
+            "default": 100,
+            "minimum": 0,
+            "maximum": 500
+        },
+        "outputFormat": {
+            "title": "Output Format",
+            "type": "string",
+            "description": "Format for the extracted content. 'vector_ready' is optimized for direct ingestion into vector databases.",
+            "enum": [
+                "markdown",
+                "plain_text",
+                "json_structured",
+                "vector_ready"
+            ],
+            "enumTitles": [
+                "Markdown (Rich formatting preserved)",
+                "Plain Text (Clean text only)",
+                "JSON Structured (Nested sections)",
+                "Vector Ready (Pre-formatted for embeddings)"
+            ],
+            "default": "vector_ready"
+        },
+        "removeElements": {
+            "title": "Remove Elements",
+            "type": "array",
+            "description": "CSS selectors for elements to remove from pages (navigation, ads, sidebars, etc.). These elements are stripped before content extraction.",
+            "editor": "stringList",
+            "default": [
+                "nav",
+                "header",
+                "footer",
+                ".advertisement",
+                "#cookie-banner",
+                ".sidebar",
+                ".nav",
+                ".menu",
+                ".ads",
+                ".social-share",
+                ".comments",
+                ".related-posts"
+            ],
+            "prefill": [
+                "nav",
+                "header",
+                "footer",
+                ".advertisement",
+                "#cookie-banner",
+                ".sidebar"
+            ]
+        },
+        "includeMetadata": {
+            "title": "Include Metadata",
+            "type": "boolean",
+            "description": "Extract and include rich metadata (author, date, keywords, language, content type). Useful for filtering during retrieval.",
+            "default": true
+        },
+        "extractLinks": {
+            "title": "Extract Links",
+            "type": "boolean",
+            "description": "Keep internal links within chunks for context. Can help with citation and source tracking.",
+            "default": false
+        },
+        "saveScreenshots": {
+            "title": "Save Screenshots",
+            "type": "boolean",
+            "description": "Save page screenshots to key-value store (useful for debugging). Only works with Playwright crawler.",
+            "default": false
+        },
+        "respectRobotsTxt": {
+            "title": "Respect robots.txt",
+            "type": "boolean",
+            "description": "Whether to respect robots.txt rules. Recommended to keep enabled for ethical scraping.",
+            "default": true
+        },
+        "maxConcurrency": {
+            "title": "Max Concurrency",
+            "type": "integer",
+            "description": "Maximum number of concurrent requests. Higher values are faster but may trigger rate limiting.",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 20
+        },
+        "requestTimeout": {
+            "title": "Request Timeout (seconds)",
+            "type": "integer",
+            "description": "Maximum time to wait for a page to load before timing out.",
+            "default": 30,
+            "minimum": 10,
+            "maximum": 120
+        },
+        "proxyConfiguration": {
+            "title": "Proxy Configuration",
+            "type": "object",
+            "description": "Proxy settings for crawling. Use Apify Proxy for reliable scraping.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true
+            }
+        },
+        "urlPatterns": {
+            "title": "URL Patterns to Include",
+            "type": "array",
+            "description": "Glob patterns for URLs to include. Leave empty to crawl all URLs on the domain.",
+            "editor": "stringList",
+            "default": []
+        },
+        "excludeUrlPatterns": {
+            "title": "URL Patterns to Exclude",
+            "type": "array",
+            "description": "Glob patterns for URLs to exclude (e.g., login pages, user profiles).",
+            "editor": "stringList",
+            "default": [
+                "**/login**",
+                "**/signup**",
+                "**/register**",
+                "**/cart**",
+                "**/checkout**",
+                "**/account**",
+                "**/admin**"
+            ]
+        }
+    },
+    "required": [
+        "startUrls"
+    ]
+}

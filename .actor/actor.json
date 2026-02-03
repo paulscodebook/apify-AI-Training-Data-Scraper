@@ -1,0 +1,46 @@
+{
+    "actorSpecification": 1,
+    "name": "ai-training-data-scraper",
+    "title": "AI Training Data Scraper",
+    "description": "Extract clean, semantically-chunked content from websites optimized for LLMs, RAG pipelines, and vector databases. Features 4 smart chunking strategies, intelligent content cleaning, rich metadata extraction, and vector database-ready output.",
+    "version": "1.0.0",
+    "buildTag": "latest",
+    "meta": {
+        "templateId": "python-crawlee"
+    },
+    "input": "./input_schema.json",
+    "dockerfile": "./Dockerfile",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "AI Training Data",
+            "views": {
+                "chunks": {
+                    "title": "Extracted Chunks",
+                    "transformation": {
+                        "fields": [
+                            "url",
+                            "title",
+                            "chunks",
+                            "metadata",
+                            "crawl_info"
+                        ]
+                    },
+                    "display": {
+                        "component": "table",
+                        "properties": {
+                            "url": {
+                                "label": "URL",
+                                "format": "text"
+                            },
+                            "title": {
+                                "label": "Page Title",
+                                "format": "text"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

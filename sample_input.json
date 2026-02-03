@@ -1,0 +1,27 @@
+{
+    "startUrls": [
+        {
+            "url": "https://docs.python.org/3/tutorial/"
+        }
+    ],
+    "crawlerType": "cheerio",
+    "maxCrawlPages": 10,
+    "maxCrawlDepth": 3,
+    "chunkingStrategy": "semantic",
+    "chunkSize": 512,
+    "chunkOverlap": 100,
+    "outputFormat": "vector_ready",
+    "removeElements": [
+        "nav",
+        "header",
+        "footer",
+        ".sidebar",
+        ".sphinxsidebar"
+    ],
+    "includeMetadata": true,
+    "extractLinks": false,
+    "saveScreenshots": false,
+    "proxyConfiguration": {
+        "useApifyProxy": false
+    }
+}

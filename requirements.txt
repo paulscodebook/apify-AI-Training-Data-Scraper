@@ -1,0 +1,21 @@
+# Apify SDK and Crawlee
+apify>=1.7.0
+crawlee[beautifulsoup,playwright]>=0.3.0
+
+# Content extraction and processing
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+readability-lxml>=0.8.0
+html2text>=2024.2.0
+markdownify>=0.12.0
+
+# NLP and text processing
+nltk>=3.8.0
+tiktoken>=0.7.0
+sentence-transformers>=2.7.0
+langdetect>=1.0.9
+python-dateutil>=2.8.0
+
+# Utilities
+numpy>=1.24.0
+httpx>=0.27.0
