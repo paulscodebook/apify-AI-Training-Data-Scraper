@@ -18,7 +18,7 @@ RUN echo "Python version:" \
  && echo "Installing dependencies:" \
  && pip install -r requirements.txt \
  && echo "Updating browserforge data:" \
- && python -m browserforge update \
+ && (python -m browserforge update || true) \
  && echo "All installed Python packages:" \
  && pip freeze
 
