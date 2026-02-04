@@ -14,6 +14,7 @@ import re
 from apify import Actor
 from crawlee.crawlers import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
 from crawlee.crawlers import PlaywrightCrawler, PlaywrightCrawlingContext
+from crawlee.browsers import BrowserPool
 
 from .content_extractor import ContentExtractor
 from .chunking import ChunkingEngine
@@ -142,17 +143,20 @@ class AITrainingDataScraper:
     async def _build_playwright_crawler(self) -> PlaywrightCrawler:
         """Build and configure Playwright crawler for JavaScript-heavy sites."""
         
+        # Configure browser pool with sandbox flags
+        browser_pool = BrowserPool.with_browser_plugins(
+            browser_type_launch_options={
+                'args': ['--no-sandbox', '--disable-setuid-sandbox']
+            }
+        )
+
         crawler = PlaywrightCrawler(
             max_requests_per_crawl=self.max_pages,
             max_request_retries=3,
             request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
             headless=True,
-            browser_pool_config={
-                'browser_type_launch_options': {
-                    'args': ['--no-sandbox', '--disable-setuid-sandbox'],
-                },
-            },
+            browser_pool=browser_pool,
         )
 
         @crawler.router.default_handler
