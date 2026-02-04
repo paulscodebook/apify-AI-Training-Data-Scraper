@@ -1,22 +1,25 @@
 # First, specify the base Docker image.
 # You can see the Docker images from Apify at https://hub.docker.com/r/apify/.
 # You can also use any other image from Docker Hub.
-FROM apify/actor-python:3.11
+FROM apify/actor-python-playwright-chrome:3.11
+
+# Set the Playwright browsers path
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 
 # Second, copy just requirements.txt into the Actor image,
 # since it should be the only file that affects the dependency install in the next step,
 # in order to speed up the build
 COPY requirements.txt ./
 
-# Install the packages specified in requirements.txt,
-# Print the installed Python version, pip version
-# and all installed packages with their versions for debugging
+# Install the packages specified in requirements.txt
 RUN echo "Python version:" \
  && python --version \
  && echo "Pip version:" \
  && pip --version \
  && echo "Installing dependencies:" \
  && pip install -r requirements.txt \
+ && echo "Installing Playwright Chromium:" \
+ && playwright install chromium \
  && echo "Updating browserforge data:" \
  && (python -m browserforge update || true) \
  && echo "All installed Python packages:" \
