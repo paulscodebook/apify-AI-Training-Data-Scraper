@@ -148,6 +148,9 @@ class AITrainingDataScraper:
             request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
             headless=True,
+            browser_type_launch_options={
+                "args": ["--no-sandbox", "--disable-setuid-sandbox"],
+            },
         )
 
         @crawler.router.default_handler
