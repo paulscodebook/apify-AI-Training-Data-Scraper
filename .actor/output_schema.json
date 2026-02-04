@@ -1,0 +1,19 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "Scraper Output",
+    "description": "Results from the web scraping process.",
+    "properties": {
+        "results": {
+            "type": "string",
+            "title": "Scraped Data",
+            "description": "The main data extracted during the run.",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        },
+        "debug_log": {
+            "type": "string",
+            "title": "Execution Log",
+            "description": "The full log of the Actor run.",
+            "template": "{{links.apiRunUrl}}/log"
+        }
+    }
+}

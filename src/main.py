@@ -146,13 +146,13 @@ class AITrainingDataScraper:
         # Configure browser plugin with sandbox flags
         plugin = PlaywrightBrowserPlugin(
             browser_type='chromium',
-            browser_type_launch_options={
+            browser_launch_options={
                 'args': ['--no-sandbox', '--disable-setuid-sandbox']
             }
         )
         
         # Create browser pool with the plugin
-        browser_pool = BrowserPool(plugins=[plugin])
+        pool = BrowserPool(plugins=[plugin])
 
         crawler = PlaywrightCrawler(
             max_requests_per_crawl=self.max_pages,
@@ -160,7 +160,7 @@ class AITrainingDataScraper:
             request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
             headless=True,
-            browser_pool=browser_pool,
+            browser_pool=pool,
         )
 
         @crawler.router.default_handler
