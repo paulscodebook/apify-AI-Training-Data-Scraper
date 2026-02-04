@@ -147,6 +147,7 @@ class AITrainingDataScraper:
         plugin = PlaywrightBrowserPlugin(
             browser_type='chromium',
             browser_launch_options={
+                'headless': True,
                 'args': ['--no-sandbox', '--disable-setuid-sandbox']
             }
         )
@@ -159,7 +160,6 @@ class AITrainingDataScraper:
             max_request_retries=3,
             request_handler_timeout=timedelta(seconds=self.request_timeout),
             max_crawl_depth=self.max_depth,
-            headless=True,
             browser_pool=pool,
         )
 
