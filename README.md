@@ -1,4 +1,4 @@
-# 🤖 AI Training Data Scraper
+# AI Training Data Scraper
 
 [![Apify Actor](https://img.shields.io/badge/Apify-Actor-blue)](https://apify.com)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-green)](https://python.org)
