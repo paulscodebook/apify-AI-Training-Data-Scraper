@@ -357,3 +357,5 @@ MIT License - See [LICENSE](LICENSE) file for details.
 **Built for developers, optimized for AI.** ⚡
 
 *Transform the web into training data.*
+
+Created by [Blukaze Automation](https://blukaze.com)
