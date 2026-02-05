@@ -57,8 +57,9 @@ class ContentExtractor:
         # Get a copy to avoid modifying original
         soup_copy = BeautifulSoup(str(soup), "lxml")
         
-        # Resolve all relative links to absolute URLs first
-        self._resolve_relative_links(soup_copy, url)
+        # Resolve all relative links to absolute URLs first (Priority 1 fix)
+        # We also collect them to pass back for efficiency
+        resolved_links = self._resolve_relative_links(soup_copy, url)
         
         # Extract title first
         title = self._extract_title(soup_copy)
@@ -87,7 +88,8 @@ class ContentExtractor:
                 "has_code": False,
                 "metadata": {
                     "link_density": link_density,
-                    "page_type": "empty"
+                    "page_type": "empty",
+                    "resolved_links": resolved_links
                 }
             }
         
@@ -117,17 +119,32 @@ class ContentExtractor:
             "metadata": {
                 "link_density": round(link_density, 3),
                 "total_links": total_links,
-                "page_type": page_type
+                "page_type": page_type,
+                "resolved_links": resolved_links
             }
         }
 
-    def _resolve_relative_links(self, soup: BeautifulSoup, base_url: str) -> None:
-        """Resolve all relative links in the soup to absolute URLs."""
+    def _resolve_relative_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:
+        """Resolve all relative links in the soup to absolute URLs, respecting <base> tag."""
         from urllib.parse import urljoin
+        
+        # Check for <base href="..."> tag
+        base_tag = soup.find('base', href=True)
+        if base_tag:
+            resolution_base = urljoin(base_url, base_tag['href'])
+        else:
+            resolution_base = base_url
+            
+        links = []
         for a in soup.find_all('a', href=True):
-            a['href'] = urljoin(base_url, a['href'])
+            absolute_url = urljoin(resolution_base, a['href'])
+            a['href'] = absolute_url
+            links.append(absolute_url)
+            
         for img in soup.find_all('img', src=True):
-            img['src'] = urljoin(base_url, img['src'])
+            img['src'] = urljoin(resolution_base, img['src'])
+            
+        return list(set(links))
 
     def _calculate_link_density(self, soup: BeautifulSoup) -> tuple[float, int]:
         """Calculate the ratio of link text to total text."""

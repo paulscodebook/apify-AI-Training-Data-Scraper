@@ -108,14 +108,15 @@ class AITrainingDataScraper:
         self._validate_input()
         
         Actor.log.info(f"🚀 Starting AI Training Data Scraper")
-        Actor.log.info(f"📌 Start URLs: {len(self.start_urls)}")
-        Actor.log.info(f"🔧 Crawler type: {self.crawler_type}")
-        Actor.log.info(f"📄 Max pages: {self.max_pages}")
-        Actor.log.info(f"🌊 Max depth: {self.max_depth}")
-        Actor.log.info(f"📊 Chunking strategy: {self.chunking_strategy}")
-        Actor.log.info(f"📏 Chunk size: {self.chunk_size}, Overlap: {self.chunk_overlap}")
-        Actor.log.info(f"📦 Output format: {self.output_format}")
-        Actor.log.info(f"💾 Save Index Pages: {self.save_index_pages}")
+        # Log all relevant inputs for debugging (fixes Priority 3 visibility)
+        Actor.log.info(f"📋 Configuration:")
+        Actor.log.info(f"   - Start URLs: {self.start_urls}")
+        Actor.log.info(f"   - Crawler: {self.crawler_type}")
+        Actor.log.info(f"   - Limits: {self.max_pages} pages, {self.max_depth} depth")
+        Actor.log.info(f"   - Chunking: {self.chunking_strategy} (size: {self.chunk_size}, overlap: {self.chunk_overlap})")
+        Actor.log.info(f"   - Output: {self.output_format}")
+        Actor.log.info(f"   - Save Index Pages: {self.save_index_pages}")
+        Actor.log.info(f"   - Remove Elements: {self.remove_elements}")
 
         # Build crawler based on type
         if self.crawler_type == "playwright":
@@ -239,15 +240,17 @@ class AITrainingDataScraper:
 
         Actor.log.info(f"📄 [{self.crawled_count}/{self.max_pages}] Processing: {url} (Depth: {current_depth})")
 
-        # Extract main content
+        # Extract main content (this now handles absolute link resolution internally)
         extracted = self.content_extractor.extract(soup, url)
         
         page_type = extracted.get("metadata", {}).get("page_type")
         link_density = extracted.get("metadata", {}).get("link_density", 0)
         total_links = extracted.get("metadata", {}).get("total_links", 0)
+        resolved_links = extracted.get("metadata", {}).get("resolved_links", [])
         
         # Enqueue more links EARLY to ensure multi-page crawling works
-        await self._enqueue_links(context, url, soup)
+        # Use pre-resolved absolute links from extraction (Priority 1 fix)
+        await self._enqueue_links(context, url, resolved_links)
 
         if not extracted.get("content"):
             Actor.log.warning(f"⚠️ No content extracted from: {url}")
@@ -314,25 +317,24 @@ class AITrainingDataScraper:
         # Push to dataset
         await Actor.push_data(output)
 
-    async def _enqueue_links(self, context, current_url: str, soup=None) -> None:
-        """Manually extract and enqueue links with depth tracking (Priority 1)."""
-        if soup is None: return
+    async def _enqueue_links(self, context, current_url: str, resolved_links: List[str] = None) -> None:
+        """Enqueue discovered links for crawling with depth tracking (Priority 1)."""
+        if not resolved_links:
+             return
         
         current_depth = getattr(context.request, 'user_data', {}).get('depth', 0)
         if current_depth >= self.max_depth:
              return
 
-        links_found = []
-        for a in soup.find_all('a', href=True):
-            # Resolve relative links (Priority 1 fix)
-            link = urljoin(current_url, a['href'])
+        links_to_follow = []
+        for link in resolved_links:
             # _should_follow_link handles domain matching and patterns
             if self._should_follow_link(link):
-                links_found.append(link)
+                links_to_follow.append(link)
         
-        if links_found:
+        if links_to_follow:
              # Remove duplicates for this page
-             unique_links = list(set(links_found))
+             unique_links = list(set(links_to_follow))
              Actor.log.info(f"📍 Found {len(unique_links)} valid links. Adding to queue (Next Depth: {current_depth + 1})")
              
              # Convert to Crawlee request objects
