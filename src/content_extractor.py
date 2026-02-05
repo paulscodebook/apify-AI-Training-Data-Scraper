@@ -75,7 +75,7 @@ class ContentExtractor:
         
         # If no main content found, use readability
         if not main_content or len(main_content.get_text(strip=True)) < 100:
-            main_content = self._use_readability(str(soup), url)
+            main_content = self._use_readability(str(soup_copy), url)
         
         if not main_content:
             return {

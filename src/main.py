@@ -234,11 +234,14 @@ class AITrainingDataScraper:
 
     async def _process_page_content(self, request, soup, context) -> None:
         """Process page content and extract data."""
-        url = request.url
+        # Use loaded_url if available to handle redirects correctly (Priority 1 fix)
+        url = request.loaded_url or request.url
         current_depth = getattr(request, 'user_data', {}).get('depth', 0)
         self.crawled_count += 1
 
         Actor.log.info(f"📄 [{self.crawled_count}/{self.max_pages}] Processing: {url} (Depth: {current_depth})")
+        if request.loaded_url and request.loaded_url != request.url:
+             Actor.log.info(f"   ↪️ Redirected from: {request.url}")
 
         # Extract main content (this now handles absolute link resolution internally)
         extracted = self.content_extractor.extract(soup, url)
