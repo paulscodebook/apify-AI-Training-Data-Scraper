@@ -59,7 +59,7 @@ class AITrainingDataScraper:
         self.max_concurrency = actor_input.get("maxConcurrency", 5)
         self.request_timeout = actor_input.get("requestTimeout", 30)
         self.proxy_config = actor_input.get("proxyConfiguration", {"useApifyProxy": True})
-        self.save_index_pages = actor_input.get("saveIndexPages", False)
+        self.save_index_pages = actor_input.get("saveIndexPages", True)
         self.url_patterns = actor_input.get("urlPatterns", [])
         self.exclude_patterns = actor_input.get("excludeUrlPatterns", [
             "**/login**", "**/signup**", "**/register**", 
@@ -256,7 +256,7 @@ class AITrainingDataScraper:
         # Priority 3: Skip index pages if option is disabled
         is_index = page_type == "index_page" or link_density > 0.6
         if is_index and not self.save_index_pages:
-             Actor.log.info(f"   ⏭️ Skipping dataset push for {page_type} (saveIndexPages is False)")
+             Actor.log.info(f"   ⏭️ Skipping dataset push for {page_type} (saveIndexPages is False). Page used for link discovery only.")
              return
 
         # Priority 2: Token Efficiency on Link Pages
@@ -324,7 +324,8 @@ class AITrainingDataScraper:
 
         links_found = []
         for a in soup.find_all('a', href=True):
-            link = a['href']
+            # Resolve relative links (Priority 1 fix)
+            link = urljoin(current_url, a['href'])
             # _should_follow_link handles domain matching and patterns
             if self._should_follow_link(link):
                 links_found.append(link)

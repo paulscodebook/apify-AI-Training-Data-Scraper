@@ -5,8 +5,8 @@
         }
     ],
     "crawlerType": "cheerio",
-    "maxCrawlPages": 10,
-    "maxCrawlDepth": 3,
+    "maxCrawlPages": 50,
+    "maxCrawlDepth": 5,
     "chunkingStrategy": "semantic",
     "chunkSize": 512,
     "chunkOverlap": 100,
@@ -22,6 +22,6 @@
     "extractLinks": false,
     "saveScreenshots": false,
     "proxyConfiguration": {
-        "useApifyProxy": false
+        "useApifyProxy": true
     }
 }

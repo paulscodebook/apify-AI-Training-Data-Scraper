@@ -133,8 +133,8 @@
         "saveIndexPages": {
             "title": "Save Index Pages",
             "type": "boolean",
-            "description": "Whether to save navigation/index pages to the dataset. These are still crawled for links even if this is false. Recommended: false for better RAG quality.",
-            "default": false
+            "description": "Whether to save navigation/index pages to the dataset. These are still crawled for links even if this is false. Default is true so you see results immediately, but can be set to false for pure content-only datasets.",
+            "default": true
         },
         "extractLinks": {
             "title": "Extract Links",
