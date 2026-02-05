@@ -24,7 +24,10 @@ from .utils import (
     is_valid_url,
     normalize_url,
     should_exclude_url,
+    should_include_url,
     get_domain,
+    get_base_domain,
+    generate_chunk_id,
 )
 
 
