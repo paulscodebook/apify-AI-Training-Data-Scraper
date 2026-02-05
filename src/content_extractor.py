@@ -57,8 +57,14 @@ class ContentExtractor:
         # Get a copy to avoid modifying original
         soup_copy = BeautifulSoup(str(soup), "lxml")
         
+        # Resolve all relative links to absolute URLs first
+        self._resolve_relative_links(soup_copy, url)
+        
         # Extract title first
         title = self._extract_title(soup_copy)
+        
+        # Calculate link density before removing elements to detect "index" pages
+        link_density, total_links = self._calculate_link_density(soup_copy)
         
         # Remove unwanted elements
         self._remove_elements(soup_copy)
@@ -78,7 +84,11 @@ class ContentExtractor:
                 "headings": [],
                 "code_blocks": [],
                 "lists": [],
-                "has_code": False
+                "has_code": False,
+                "metadata": {
+                    "link_density": link_density,
+                    "page_type": "empty"
+                }
             }
         
         # Extract structured elements
@@ -92,6 +102,9 @@ class ContentExtractor:
         # Get plain text
         plain_text = self._get_plain_text(main_content)
         
+        # Detect page type
+        page_type = self._classify_page(url, title, plain_text, link_density, total_links)
+        
         return {
             "title": title,
             "content": plain_text,
@@ -100,8 +113,70 @@ class ContentExtractor:
             "headings": headings,
             "code_blocks": code_blocks,
             "lists": lists,
-            "has_code": len(code_blocks) > 0
+            "has_code": len(code_blocks) > 0,
+            "metadata": {
+                "link_density": round(link_density, 3),
+                "total_links": total_links,
+                "page_type": page_type
+            }
         }
+
+    def _resolve_relative_links(self, soup: BeautifulSoup, base_url: str) -> None:
+        """Resolve all relative links in the soup to absolute URLs."""
+        from urllib.parse import urljoin
+        for a in soup.find_all('a', href=True):
+            a['href'] = urljoin(base_url, a['href'])
+        for img in soup.find_all('img', src=True):
+            img['src'] = urljoin(base_url, img['src'])
+
+    def _calculate_link_density(self, soup: BeautifulSoup) -> tuple[float, int]:
+        """Calculate the ratio of link text to total text."""
+        all_text = soup.get_text()
+        if not all_text.strip():
+            return 0.0, 0
+        
+        link_text = ""
+        total_links = 0
+        for a in soup.find_all('a'):
+            link_text += a.get_text()
+            total_links += 1
+            
+        ratio = len(link_text) / len(all_text) if len(all_text) > 0 else 0
+        return ratio, total_links
+
+    def _classify_page(self, url: str, title: str, text: str, density: float, link_count: int) -> str:
+        """Classify the page type based on content markers."""
+        url_lower = url.lower()
+        title_lower = title.lower()
+        
+        # Index/Navigation detection
+        if density > 0.5 and link_count > 20:
+             return "index_page"
+        if any(x in url_lower for x in ["/index", "/toc", "/contents"]) or "table of contents" in title_lower:
+             if density > 0.3:
+                 return "index_page"
+        
+        # Documentation detection
+        if any(x in url_lower for x in ["/docs", "/documentation", "/guide"]):
+             return "documentation"
+             
+        # API Reference detection
+        if any(x in url_lower for x in ["/api", "/reference", "api-docs"]):
+             return "api_reference"
+             
+        # Tutorial detection
+        if any(x in url_lower for x in ["/tutorial", "/course", "/learn"]):
+             return "tutorial"
+             
+        # Blog detection
+        if any(x in url_lower for x in ["/blog", "/posts"]):
+             return "blog_post"
+             
+        # Landing page detection (heuristic)
+        if len(text.split()) < 300 and link_count < 15 and ("welcome" in title_lower or "home" in title_lower):
+             return "landing_page"
+             
+        return "general_content"
 
     def _extract_title(self, soup: BeautifulSoup) -> str:
         """Extract page title from various sources."""

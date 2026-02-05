@@ -23,7 +23,7 @@ class MetadataExtractor:
             "published_date": self._extract_date(soup, "published"),
             "modified_date": self._extract_date(soup, "modified"),
             "language": self._detect_language(soup, content),
-            "keywords": self._extract_keywords(soup),
+            "keywords": self._extract_keywords(soup, content),
             "word_count": len(content.get("content", "").split()),
             "estimated_reading_time": max(1, len(content.get("content", "").split()) // 250),
             "content_type": self._detect_content_type(url, soup),
@@ -96,11 +96,66 @@ class MetadataExtractor:
             pass
         return "en"
 
-    def _extract_keywords(self, soup: BeautifulSoup) -> List[str]:
+    def _extract_keywords(self, soup: BeautifulSoup, content: Dict = None) -> List[str]:
+        # Priority 1: Meta keywords
         meta = soup.find("meta", attrs={"name": "keywords"})
         if meta and meta.get("content"):
-            return [k.strip().lower() for k in meta["content"].split(",") if k.strip()][:20]
-        return []
+            keywords = [k.strip().lower() for k in meta["content"].split(",") if k.strip()]
+            if keywords:
+                return keywords[:20]
+        
+        # Priority 2: Extract from content (frequency based)
+        return self._extract_keywords_from_text(soup, content)
+
+    def _extract_keywords_from_text(self, soup: BeautifulSoup, content: Dict = None) -> List[str]:
+        """Extract keywords based on word frequency in relevant tags."""
+        text = ""
+        
+        # Give more weight to headings if available from content dict
+        if content and content.get("headings"):
+            for h in content["headings"]:
+               text += (" " + h.get("text", "") + " ") * 2  # Double weight
+        else:
+             # Fallback to soup
+             for tag in ['h1', 'h2', 'h3', 'strong', 'b']:
+                elements = soup.find_all(tag)
+                for el in elements:
+                    text += " " + el.get_text() + " " + el.get_text() 
+
+        # Add body text
+        if content and content.get("content"):
+             text += " " + content["content"]
+        else:
+             body = soup.find('body')
+             if body:
+                text += " " + body.get_text()
+            
+        if not text:
+            return []
+
+        # Simple tokenization and cleaning
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        
+        # Basic stopwords list
+        stopwords = {
+            'the', 'and', 'for', 'that', 'this', 'with', 'you', 'are', 'not', 'can',
+            'from', 'have', 'has', 'was', 'what', 'which', 'web', 'page', 'site',
+            'click', 'here', 'more', 'about', 'contact', 'search', 'menu', 'home',
+            'news', 'blog', 'copyright', 'privacy', 'policy', 'terms', 'use', 'all',
+            'rights', 'reserved', 'follow', 'social', 'media', 'com', 'org', 'net',
+            'http', 'https', 'www', 'login', 'sign', 'register', 'account', 'user',
+            'password', 'email', 'name', 'day', 'month', 'year', 'time', 'date'
+        }
+        
+        # Filter stopwords
+        filtered_words = [w for w in words if w not in stopwords]
+        
+        # Count frequency
+        from collections import Counter
+        counter = Counter(filtered_words)
+        
+        # Return top 20 common words
+        return [word for word, count in counter.most_common(20)]
 
     def _detect_content_type(self, url: str, soup: BeautifulSoup) -> str:
         url_lower = url.lower()

@@ -65,7 +65,7 @@
         "chunkSize": {
             "title": "Target Chunk Size",
             "type": "integer",
-            "description": "Target size in tokens (for fixed_token) or words (for other strategies). 512 is optimal for most embedding models.",
+            "description": "Target size in tokens. 512 is optimal for most embedding models (OpenAI, Anthropic).",
             "default": 512,
             "minimum": 128,
             "maximum": 2048
@@ -73,7 +73,7 @@
         "chunkOverlap": {
             "title": "Chunk Overlap",
             "type": "integer",
-            "description": "Number of tokens/words to overlap between chunks. Prevents context loss at chunk boundaries. Recommended: 15-20% of chunk size.",
+            "description": "Number of tokens to overlap between chunks. Prevents context loss at chunk boundaries. Recommended: 15-20% of chunk size.",
             "default": 100,
             "minimum": 0,
             "maximum": 500

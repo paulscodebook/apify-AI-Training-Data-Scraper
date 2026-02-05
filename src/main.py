@@ -83,15 +83,38 @@ class AITrainingDataScraper:
             if url:
                 self.start_domains.add(get_domain(url))
 
+    def _validate_input(self):
+        """Validate actor input configuration."""
+        if self.max_pages <= 0:
+            raise ValueError(f"maxCrawlPages must be positive, got {self.max_pages}")
+        
+        if self.max_depth <= 0:
+            raise ValueError(f"maxCrawlDepth must be positive, got {self.max_depth}")
+            
+        if self.crawler_type not in ["cheerio", "playwright"]:
+            raise ValueError(f"Invalid crawlerType: {self.crawler_type}. Must be 'cheerio' or 'playwright'")
+            
+        # Warning regarding crawler selection
+        if self.crawler_type == "cheerio":
+             Actor.log.warning("⚠️ Using 'cheerio' crawler. This may not work for SPA/JavaScript-heavy sites (e.g. React/Vue docs). Consider using 'playwright' if you see no links extracted.")
+
+        # Clarify extractLinks
+        if self.input.get("extractLinks") is not None:
+             Actor.log.info(f"ℹ️ extractLinks set to {self.extract_links}. This controls whether discovered links are INCLUDED IN THE OUTPUT dataset. It does NOT control crawling behavior (use maxCrawlDepth for that).")
+
     async def run(self):
         """Run the scraper."""
+        self._validate_input()
+        
         Actor.log.info(f"🚀 Starting AI Training Data Scraper")
         Actor.log.info(f"📌 Start URLs: {len(self.start_urls)}")
         Actor.log.info(f"🔧 Crawler type: {self.crawler_type}")
         Actor.log.info(f"📄 Max pages: {self.max_pages}")
+        Actor.log.info(f"🌊 Max depth: {self.max_depth}")
         Actor.log.info(f"📊 Chunking strategy: {self.chunking_strategy}")
         Actor.log.info(f"📏 Chunk size: {self.chunk_size}, Overlap: {self.chunk_overlap}")
         Actor.log.info(f"📦 Output format: {self.output_format}")
+        Actor.log.info(f"🔗 Link Extraction in Output: {'Enabled' if self.extract_links else 'Disabled'}")
 
         # Build crawler based on type
         if self.crawler_type == "playwright":
@@ -123,6 +146,9 @@ class AITrainingDataScraper:
         Actor.log.info(f"📦 Total chunks generated: {self.total_chunks}")
         Actor.log.info(f"❌ Errors: {self.errors_count}")
         Actor.log.info("=" * 60)
+        
+        if self.crawled_count <= 1 and self.max_pages > 1:
+             Actor.log.warning("⚠️ Only 1 page was crawled despite maxCrawlPages > 1. This usually means no links were found or matched. \nCHECK: 1) Is the site an SPA? Use 'playwright'. \n2) Are there valid links on the page? \n3) Do your urlPatterns/excludeUrlPatterns filter everything?")
 
     async def _build_beautifulsoup_crawler(self) -> BeautifulSoupCrawler:
         """Build and configure BeautifulSoup crawler for static sites."""
@@ -212,27 +238,40 @@ class AITrainingDataScraper:
 
         Actor.log.info(f"📄 [{self.crawled_count}/{self.max_pages}] Processing: {url}")
 
-        # Extract main content
+        # Extract main content (this now includes page classification and absolute link resolution)
         extracted = self.content_extractor.extract(soup, url)
+        
+        page_type = extracted.get("metadata", {}).get("page_type")
+        link_density = extracted.get("metadata", {}).get("link_density", 0)
         
         if not extracted.get("content"):
             Actor.log.warning(f"⚠️ No content extracted from: {url}")
+            await self._enqueue_links(context, url) # Still try to follow links
             return
 
-        # Apply chunking
-        chunks = self.chunking_engine.chunk(
-            extracted["markdown"] or extracted["content"],
-            url=url,
-            title=extracted.get("title", "")
-        )
-
-        self.total_chunks += len(chunks)
-        Actor.log.info(f"   📊 Generated {len(chunks)} chunks")
+        # Skip chunking for index/navigation pages to save tokens and improve RAG quality
+        # but still push the basic page info to the dataset
+        is_index = page_type == "index_page" or link_density > 0.6
+        
+        chunks = []
+        if not is_index:
+            # Apply chunking
+            chunks = self.chunking_engine.chunk(
+                extracted["markdown"] or extracted["content"],
+                url=url,
+                title=extracted.get("title", "")
+            )
+            self.total_chunks += len(chunks)
+            Actor.log.info(f"   📊 [{page_type}] Generated {len(chunks)} chunks")
+        else:
+            Actor.log.info(f"   ⏭️ Skipping chunking for {page_type} (Link density: {link_density})")
 
         # Extract metadata if enabled
         metadata = {}
         if self.include_metadata:
             metadata = self.metadata_extractor.extract(soup, url, extracted)
+            # Merge classification metadata
+            metadata.update(extracted.get("metadata", {}))
 
         # Format output
         output = self.output_formatter.format(
@@ -244,6 +283,9 @@ class AITrainingDataScraper:
             extract_links=self.extract_links,
             crawl_depth=getattr(request, 'user_data', {}).get('depth', 0)
         )
+        
+        # Add classification to top level for easy filtering
+        output["page_type"] = page_type
 
         # Push to dataset
         await Actor.push_data(output)
@@ -256,12 +298,20 @@ class AITrainingDataScraper:
         try:
             # Use the context's enqueue_links method if available
             if hasattr(context, 'enqueue_links'):
+                # We need to capture the enqueued info to log it
+                # Unfortunately enqueue_links returns None or a task, not the list of enqueued urls directly in all versions
+                # checking implementation, but we can wrap it or just trust it.
+                # However, for debugging, let's try to see if we can perform a dry run or regex check if using bs4
+                
+                Actor.log.debug(f"🔍 Looking for links on {current_url}...")
+                
                 await context.enqueue_links(
                     strategy="same-domain",
                     exclude=self.exclude_patterns
+                    # regex=... could be added here if we had patterns
                 )
         except Exception as e:
-            Actor.log.debug(f"Could not enqueue links: {e}")
+            Actor.log.error(f"❌ Link extraction failed: {e}")
 
     def _should_follow_link(self, url: str) -> bool:
         """Determine if a URL should be followed."""

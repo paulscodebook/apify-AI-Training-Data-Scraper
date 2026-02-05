@@ -260,6 +260,7 @@ client.upsert(collection_name="docs", points=points)
 | `outputFormat` | string | `"vector_ready"` | Output format |
 | `removeElements` | array | *see below* | CSS selectors to remove |
 | `includeMetadata` | boolean | `true` | Extract page metadata |
+| `extractLinks` | boolean | `false` | Include discovered hyperlinks in the output dataset (does not affect crawling) |
 | `excludeUrlPatterns` | array | *see below* | URL patterns to skip |
 
 ### Default Remove Elements
@@ -300,8 +301,8 @@ client.upsert(collection_name="docs", points=points)
 ### Getting blocked by website
 **Solution**: Enable Apify Proxy in configuration. For aggressive blocking, use residential proxies.
 
-### Missing content on JavaScript sites
-**Solution**: Switch to `"crawlerType": "playwright"` for full JavaScript rendering.
+### Missing content on JavaScript sites / Only 1 page crawled
+**Solution**: Switch to `"crawlerType": "playwright"` for full JavaScript rendering. If your logs say "1 page crawled" and you are using Cheerio on a React/Vue/SPA app, the crawler is seeing an empty shell.
 
 ### Chunks too large for embeddings
 **Solution**: Reduce `chunkSize` to 384-512 tokens. Most models have 8192-token limits.

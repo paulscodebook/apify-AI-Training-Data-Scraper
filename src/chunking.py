@@ -212,25 +212,53 @@ class ChunkingEngine:
             sentences = re.split(r'(?<=[.!?])\s+', text)
         chunks = []
         current = []
-        word_count = 0
+        current_tokens = 0
         pos = 0
         for s in sentences:
             s = s.strip()
             if not s:
                 continue
-            s_words = len(s.split())
-            if word_count + s_words > self.chunk_size * 1.5 and current:
+            s_tokens = self._count_tokens(s)
+            
+            # If a single sentence is larger than chunk_size, we must break it
+            if s_tokens > self.chunk_size:
+                 if current:
+                     chunk_text = ' '.join(current)
+                     chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
+                     pos += len(chunk_text)
+                     current = []
+                     current_tokens = 0
+                 
+                 # Split the long sentence by tokens
+                 sentence_chunks = self._chunk_by_tokens(s)
+                 for sc in sentence_chunks:
+                     sc.chunk_index = len(chunks)
+                     chunks.append(sc)
+                 continue
+
+            if current_tokens + s_tokens > self.chunk_size and current:
                 chunk_text = ' '.join(current)
-                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
                 pos += len(chunk_text)
-                current = [s]
-                word_count = s_words
+                
+                # Overlap: keep some sentences from the end
+                overlap_tokens = 0
+                overlap_sentences = []
+                for prev_s in reversed(current):
+                    prev_s_tokens = self._count_tokens(prev_s)
+                    if overlap_tokens + prev_s_tokens <= self.overlap:
+                        overlap_sentences.insert(0, prev_s)
+                        overlap_tokens += prev_s_tokens
+                    else:
+                        break
+                current = overlap_sentences + [s]
+                current_tokens = overlap_tokens + s_tokens
             else:
                 current.append(s)
-                word_count += s_words
+                current_tokens += s_tokens
         if current:
             chunk_text = ' '.join(current)
-            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
         return chunks
 
     def _chunk_semantically(self, text: str) -> List[Chunk]:
@@ -243,7 +271,7 @@ class ChunkingEngine:
         try:
             return self._semantic_with_embeddings(sentences)
         except:
-            return self._semantic_heuristic(sentences, text)
+            return self._semantic_heuristic(sentences)
 
     def _semantic_with_embeddings(self, sentences: List[str]) -> List[Chunk]:
         import numpy as np
@@ -252,8 +280,6 @@ class ChunkingEngine:
             self._sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
         embeddings = self._sentence_model.encode(sentences)
         
-        # Sliding window approach: compare each sentence with its neighbors
-        # User specified "Cap semantic similarity scope" to sliding window
         sims = []
         for i in range(1, len(embeddings)):
             sim = np.dot(embeddings[i-1], embeddings[i]) / (np.linalg.norm(embeddings[i-1]) * np.linalg.norm(embeddings[i]))
@@ -262,48 +288,49 @@ class ChunkingEngine:
         threshold = np.percentile(sims, 25)
         chunks = []
         current = [sentences[0]]
-        word_count = len(sentences[0].split())
+        current_tokens = self._count_tokens(sentences[0])
         pos = 0
         for s, sim in zip(sentences[1:], sims):
-            # Dynamic reasoning: break if similarity is low OR we are over the target size
-            should_break = (sim < threshold and word_count >= self.chunk_size // 2) or word_count >= self.chunk_size * 1.5
+            s_tokens = self._count_tokens(s)
+            should_break = (sim < threshold and current_tokens >= self.chunk_size // 2) or current_tokens + s_tokens > self.chunk_size
             if should_break and current:
                 chunk_text = ' '.join(current)
-                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
                 pos += len(chunk_text)
                 current = [s]
-                word_count = len(s.split())
+                current_tokens = s_tokens
             else:
                 current.append(s)
-                word_count += len(s.split())
+                current_tokens += s_tokens
         if current:
             chunk_text = ' '.join(current)
-            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
         return chunks
 
-    def _semantic_heuristic(self, sentences: List[str], text: str) -> List[Chunk]:
+    def _semantic_heuristic(self, sentences: List[str]) -> List[Chunk]:
         patterns = [r'^(?:however|but|although)', r'^(?:first|second|finally)', r'^(?:for example)', r'^(?:note:|warning:)', r'^\d+\.', r'^[-•*]\s']
         chunks = []
         current = []
-        word_count = 0
+        current_tokens = 0
         pos = 0
         for s in sentences:
             if not s.strip():
                 continue
+            s_tokens = self._count_tokens(s)
             is_break = any(re.match(p, s.strip(), re.I) for p in patterns)
-            should_break = (is_break and word_count >= self.chunk_size // 3) or word_count >= self.chunk_size
+            should_break = (is_break and current_tokens >= self.chunk_size // 3) or current_tokens + s_tokens > self.chunk_size
             if should_break and current:
                 chunk_text = ' '.join(current)
-                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
                 pos += len(chunk_text)
                 current = [s]
-                word_count = len(s.split())
+                current_tokens = s_tokens
             else:
                 current.append(s)
-                word_count += len(s.split())
+                current_tokens += s_tokens
         if current:
             chunk_text = ' '.join(current)
-            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=word_count, start_position=pos, end_position=pos + len(chunk_text)))
+            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text)))
         return chunks
 
     def _chunk_by_markdown(self, text: str) -> List[Chunk]:
@@ -313,21 +340,53 @@ class ChunkingEngine:
         heading = None
         level = None
         pos = 0
+        current_tokens = 0
+        
         for line in lines:
             m = re.match(r'^(#{1,6})\s+(.+)$', line)
             if m:
                 if current:
                     chunk_text = '\n'.join(current)
-                    if len(chunk_text.split()) >= 50:
-                        chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text), section_title=heading, heading_level=level))
-                        pos += len(chunk_text)
+                    chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text), section_title=heading, heading_level=level))
+                    pos += len(chunk_text)
                 current = [line]
                 heading = m.group(2).strip()
                 level = len(m.group(1))
+                current_tokens = self._count_tokens(line)
             else:
-                current.append(line)
+                # If current chunk is already too big even without a heading, we should probably split it
+                line_tokens = self._count_tokens(line)
+                if current_tokens + line_tokens > self.chunk_size * 2 and current:
+                     # This handles very long sections without subheadings
+                     chunk_text = '\n'.join(current)
+                     chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text), section_title=heading, heading_level=level))
+                     pos += len(chunk_text)
+                     current = [line]
+                     current_tokens = line_tokens
+                else:
+                    current.append(line)
+                    current_tokens += line_tokens
+
         if current:
             chunk_text = '\n'.join(current)
-            if len(chunk_text.split()) >= 20:
-                chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=self._count_tokens(chunk_text), word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text), section_title=heading, heading_level=level))
-        return chunks if chunks else self._chunk_by_sentences(text)
+            chunks.append(Chunk(content=chunk_text, chunk_index=len(chunks), token_count=current_tokens, word_count=len(chunk_text.split()), start_position=pos, end_position=pos + len(chunk_text), section_title=heading, heading_level=level))
+        
+        # If no chunks were created (e.g. no headings) or it's still too large, fallback to sentence-based
+        if not chunks:
+            return self._chunk_by_sentences(text)
+            
+        # Refine chunks: if any chunk is significantly larger than chunk_size, split it further
+        refined_chunks = []
+        for c in chunks:
+            if c.token_count > self.chunk_size * 1.5:
+                sub_chunks = self._chunk_by_sentences(c.content)
+                for sc in sub_chunks:
+                    sc.section_title = c.section_title
+                    sc.heading_level = c.heading_level
+                    sc.chunk_index = len(refined_chunks)
+                    refined_chunks.append(sc)
+            else:
+                c.chunk_index = len(refined_chunks)
+                refined_chunks.append(c)
+                
+        return refined_chunks
