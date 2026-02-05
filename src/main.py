@@ -58,6 +58,7 @@ class AITrainingDataScraper:
         self.max_concurrency = actor_input.get("maxConcurrency", 5)
         self.request_timeout = actor_input.get("requestTimeout", 30)
         self.proxy_config = actor_input.get("proxyConfiguration", {"useApifyProxy": True})
+        self.save_index_pages = actor_input.get("saveIndexPages", False)
         self.url_patterns = actor_input.get("urlPatterns", [])
         self.exclude_patterns = actor_input.get("excludeUrlPatterns", [
             "**/login**", "**/signup**", "**/register**", 
@@ -101,10 +102,6 @@ class AITrainingDataScraper:
         if self.crawler_type == "cheerio":
              Actor.log.warning("⚠️ Using 'cheerio' crawler. This may not work for SPA/JavaScript-heavy sites (e.g. React/Vue docs). Consider using 'playwright' if you see no links extracted.")
 
-        # Clarify extractLinks
-        if self.input.get("extractLinks") is not None:
-             Actor.log.info(f"ℹ️ extractLinks set to {self.extract_links}. This controls whether discovered links are INCLUDED IN THE OUTPUT dataset. It does NOT control crawling behavior (use maxCrawlDepth for that).")
-
     async def run(self):
         """Run the scraper."""
         self._validate_input()
@@ -117,7 +114,7 @@ class AITrainingDataScraper:
         Actor.log.info(f"📊 Chunking strategy: {self.chunking_strategy}")
         Actor.log.info(f"📏 Chunk size: {self.chunk_size}, Overlap: {self.chunk_overlap}")
         Actor.log.info(f"📦 Output format: {self.output_format}")
-        Actor.log.info(f"🔗 Link Extraction in Output: {'Enabled' if self.extract_links else 'Disabled'}")
+        Actor.log.info(f"💾 Save Index Pages: {self.save_index_pages}")
 
         # Build crawler based on type
         if self.crawler_type == "playwright":
@@ -130,7 +127,7 @@ class AITrainingDataScraper:
         for url_item in self.start_urls:
             url = url_item.get("url") if isinstance(url_item, dict) else url_item
             if url and is_valid_url(url):
-                start_requests.append(url)
+                start_requests.append({"url": url, "user_data": {"depth": 0}})
                 Actor.log.info(f"📍 Added start URL: {url}")
             else:
                 Actor.log.warning(f"⚠️ Invalid start URL skipped: {url_item}")
@@ -160,7 +157,7 @@ class AITrainingDataScraper:
             max_requests_per_crawl=self.max_pages,
             max_request_retries=3,
             request_handler_timeout=timedelta(seconds=self.request_timeout),
-            max_crawl_depth=self.max_depth,
+            # max_crawl_depth is handled manually to ensure better control
         )
 
         @crawler.router.default_handler
@@ -188,7 +185,6 @@ class AITrainingDataScraper:
             max_requests_per_crawl=self.max_pages,
             max_request_retries=3,
             request_handler_timeout=timedelta(seconds=self.request_timeout),
-            max_crawl_depth=self.max_depth,
             browser_pool=pool,
         )
 
@@ -237,41 +233,51 @@ class AITrainingDataScraper:
     async def _process_page_content(self, request, soup, context) -> None:
         """Process page content and extract data."""
         url = request.url
+        current_depth = getattr(request, 'user_data', {}).get('depth', 0)
         self.crawled_count += 1
 
-        Actor.log.info(f"📄 [{self.crawled_count}/{self.max_pages}] Processing: {url}")
+        Actor.log.info(f"📄 [{self.crawled_count}/{self.max_pages}] Processing: {url} (Depth: {current_depth})")
 
-        # Extract main content (this now includes page classification and absolute link resolution)
+        # Extract main content
         extracted = self.content_extractor.extract(soup, url)
         
         page_type = extracted.get("metadata", {}).get("page_type")
         link_density = extracted.get("metadata", {}).get("link_density", 0)
+        total_links = extracted.get("metadata", {}).get("total_links", 0)
         
-        # Enqueue more links EARLY to ensure multi-page crawling works even if extraction fails
+        # Enqueue more links EARLY to ensure multi-page crawling works
         await self._enqueue_links(context, url, soup)
 
         if not extracted.get("content"):
             Actor.log.warning(f"⚠️ No content extracted from: {url}")
             return
 
-        # Skip granular chunking for pure index/navigation pages to save tokens,
-        # but ALWAYS produce at least one chunk if there is text (fixes Priority 2)
-        is_index = page_type == "index_page" or link_density > 0.7
-        
+        # Priority 3: Skip index pages if option is disabled
+        is_index = page_type == "index_page" or link_density > 0.6
+        if is_index and not self.save_index_pages:
+             Actor.log.info(f"   ⏭️ Skipping dataset push for {page_type} (saveIndexPages is False)")
+             return
+
+        # Priority 2: Token Efficiency on Link Pages
+        # If it's an index page, we use a single-chunk fallback with STIPPED links
+        # This drastically reduces token count (10 tokens -> 1 token per link)
         if is_index:
-             Actor.log.info(f"   ℹ️ Page classified as {page_type} (Link density: {link_density}). Using single-chunk fallback.")
-             # Single chunk fallback for index pages
+             Actor.log.info(f"   ℹ️ Processing {page_type} with token-efficient fallback.")
+             # Strip markdown links for index pages to save tokens
+             clean_content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', extracted["markdown"] or extracted["content"])
+             
              chunks = [{
                 "chunk_id": generate_chunk_id(url, 0),
                 "chunk_index": 0,
-                "content": extracted["markdown"] or extracted["content"],
-                "token_count": len(self.chunking_engine.encoder.encode(extracted["markdown"] or extracted["content"])) if extracted.get("content") else 0,
-                "word_count": len(extracted["content"].split()),
-                "char_count": len(extracted["content"]),
+                "content": clean_content.strip(),
+                "token_count": len(self.chunking_engine.encoder.encode(clean_content)),
+                "word_count": len(clean_content.split()),
+                "char_count": len(clean_content),
                 "embedding_ready": True,
                 "chunk_metadata": {
                     "page_type": page_type,
-                    "is_index": True
+                    "is_index": True,
+                    "original_link_count": total_links
                 }
              }]
         else:
@@ -289,7 +295,6 @@ class AITrainingDataScraper:
         metadata = {}
         if self.include_metadata:
             metadata = self.metadata_extractor.extract(soup, url, extracted)
-            # Merge classification metadata
             metadata.update(extracted.get("metadata", {}))
 
         # Format output
@@ -300,7 +305,7 @@ class AITrainingDataScraper:
             chunks=chunks,
             metadata=metadata,
             extract_links=self.extract_links,
-            crawl_depth=getattr(request, 'user_data', {}).get('depth', 0)
+            crawl_depth=current_depth
         )
         
         output["page_type"] = page_type
@@ -309,33 +314,33 @@ class AITrainingDataScraper:
         await Actor.push_data(output)
 
     async def _enqueue_links(self, context, current_url: str, soup=None) -> None:
-        """Enqueue discovered links for crawling with explicit depth and pattern control."""
-        try:
-            if hasattr(context, 'enqueue_links'):
-                current_depth = getattr(context.request, 'user_data', {}).get('depth', 0)
-                
-                if current_depth >= self.max_depth:
-                    Actor.log.debug(f"Reached max depth ({self.max_depth}) at {current_url}")
-                    return
+        """Manually extract and enqueue links with depth tracking (Priority 1)."""
+        if soup is None: return
+        
+        current_depth = getattr(context.request, 'user_data', {}).get('depth', 0)
+        if current_depth >= self.max_depth:
+             return
 
-                Actor.log.info(f"🔍 Searching for links on {current_url} (Current depth: {current_depth})")
-                
-                # Use a more explicit enqueue strategy to avoid "same-domain" misses
-                # and ensure our patterns are respected
-                await context.enqueue_links(
-                    selector='a[href]',
-                    strategy='same-domain',
-                    exclude=self.exclude_patterns,
-                    transform_request_function=self._transform_request
-                )
-        except Exception as e:
-            Actor.log.error(f"❌ Link extraction failed on {current_url}: {e}")
-
-    def _transform_request(self, request):
-        """Prepare request with correct user data (depth)."""
-        # Note: Crawlee handles depth incrementing if we use enqueue_links correctly,
-        # but we can explicitly manage it in user_data if needed.
-        return request
+        links_found = []
+        for a in soup.find_all('a', href=True):
+            link = a['href']
+            # _should_follow_link handles domain matching and patterns
+            if self._should_follow_link(link):
+                links_found.append(link)
+        
+        if links_found:
+             # Remove duplicates for this page
+             unique_links = list(set(links_found))
+             Actor.log.info(f"📍 Found {len(unique_links)} valid links. Adding to queue (Next Depth: {current_depth + 1})")
+             
+             # Convert to Crawlee request objects
+             requests = [
+                 {"url": link, "user_data": {"depth": current_depth + 1}} 
+                 for link in unique_links
+             ]
+             
+             # add_requests automatically handles global de-duplication
+             await context.add_requests(requests)
 
     def _should_follow_link(self, url: str) -> bool:
         """Determine if a URL should be followed."""
