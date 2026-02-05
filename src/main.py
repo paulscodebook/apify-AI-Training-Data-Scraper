@@ -244,27 +244,43 @@ class AITrainingDataScraper:
         page_type = extracted.get("metadata", {}).get("page_type")
         link_density = extracted.get("metadata", {}).get("link_density", 0)
         
+        # Enqueue more links EARLY to ensure multi-page crawling works even if extraction fails
+        await self._enqueue_links(context, url, soup)
+
         if not extracted.get("content"):
             Actor.log.warning(f"⚠️ No content extracted from: {url}")
-            await self._enqueue_links(context, url) # Still try to follow links
             return
 
-        # Skip chunking for index/navigation pages to save tokens and improve RAG quality
-        # but still push the basic page info to the dataset
-        is_index = page_type == "index_page" or link_density > 0.6
+        # Skip granular chunking for pure index/navigation pages to save tokens,
+        # but ALWAYS produce at least one chunk if there is text (fixes Priority 2)
+        is_index = page_type == "index_page" or link_density > 0.7
         
-        chunks = []
-        if not is_index:
-            # Apply chunking
+        if is_index:
+             Actor.log.info(f"   ℹ️ Page classified as {page_type} (Link density: {link_density}). Using single-chunk fallback.")
+             # Single chunk fallback for index pages
+             chunks = [{
+                "chunk_id": generate_chunk_id(url, 0),
+                "chunk_index": 0,
+                "content": extracted["markdown"] or extracted["content"],
+                "token_count": len(self.chunking_engine.encoder.encode(extracted["markdown"] or extracted["content"])) if extracted.get("content") else 0,
+                "word_count": len(extracted["content"].split()),
+                "char_count": len(extracted["content"]),
+                "embedding_ready": True,
+                "chunk_metadata": {
+                    "page_type": page_type,
+                    "is_index": True
+                }
+             }]
+        else:
+            # Apply standard chunking
             chunks = self.chunking_engine.chunk(
                 extracted["markdown"] or extracted["content"],
                 url=url,
                 title=extracted.get("title", "")
             )
-            self.total_chunks += len(chunks)
-            Actor.log.info(f"   📊 [{page_type}] Generated {len(chunks)} chunks")
-        else:
-            Actor.log.info(f"   ⏭️ Skipping chunking for {page_type} (Link density: {link_density})")
+        
+        self.total_chunks += len(chunks)
+        Actor.log.info(f"   📊 [{page_type}] Generated {len(chunks)} chunks")
 
         # Extract metadata if enabled
         metadata = {}
@@ -284,34 +300,39 @@ class AITrainingDataScraper:
             crawl_depth=getattr(request, 'user_data', {}).get('depth', 0)
         )
         
-        # Add classification to top level for easy filtering
         output["page_type"] = page_type
 
         # Push to dataset
         await Actor.push_data(output)
 
-        # Enqueue more links
-        await self._enqueue_links(context, url)
-
-    async def _enqueue_links(self, context, current_url: str) -> None:
-        """Enqueue discovered links for crawling."""
+    async def _enqueue_links(self, context, current_url: str, soup=None) -> None:
+        """Enqueue discovered links for crawling with explicit depth and pattern control."""
         try:
-            # Use the context's enqueue_links method if available
             if hasattr(context, 'enqueue_links'):
-                # We need to capture the enqueued info to log it
-                # Unfortunately enqueue_links returns None or a task, not the list of enqueued urls directly in all versions
-                # checking implementation, but we can wrap it or just trust it.
-                # However, for debugging, let's try to see if we can perform a dry run or regex check if using bs4
+                current_depth = getattr(context.request, 'user_data', {}).get('depth', 0)
                 
-                Actor.log.debug(f"🔍 Looking for links on {current_url}...")
+                if current_depth >= self.max_depth:
+                    Actor.log.debug(f"Reached max depth ({self.max_depth}) at {current_url}")
+                    return
+
+                Actor.log.info(f"🔍 Searching for links on {current_url} (Current depth: {current_depth})")
                 
+                # Use a more explicit enqueue strategy to avoid "same-domain" misses
+                # and ensure our patterns are respected
                 await context.enqueue_links(
-                    strategy="same-domain",
-                    exclude=self.exclude_patterns
-                    # regex=... could be added here if we had patterns
+                    selector='a[href]',
+                    strategy='same-domain',
+                    exclude=self.exclude_patterns,
+                    transform_request_function=self._transform_request
                 )
         except Exception as e:
-            Actor.log.error(f"❌ Link extraction failed: {e}")
+            Actor.log.error(f"❌ Link extraction failed on {current_url}: {e}")
+
+    def _transform_request(self, request):
+        """Prepare request with correct user data (depth)."""
+        # Note: Crawlee handles depth incrementing if we use enqueue_links correctly,
+        # but we can explicitly manage it in user_data if needed.
+        return request
 
     def _should_follow_link(self, url: str) -> bool:
         """Determine if a URL should be followed."""
@@ -322,10 +343,17 @@ class AITrainingDataScraper:
         # Check if URL is within allowed domains
         url_domain = get_domain(url)
         if url_domain not in self.start_domains:
-            return False
+            # Check if it's a subdomain of a start domain
+            base_domains = {get_base_domain(d) for d in self.start_domains}
+            if get_base_domain(url) not in base_domains:
+                return False
 
         # Check exclude patterns
         if should_exclude_url(url, self.exclude_patterns):
+            return False
+            
+        # Check include patterns
+        if self.url_patterns and not should_include_url(url, self.url_patterns):
             return False
 
         return True
@@ -343,4 +371,20 @@ async def main():
 
         # Create and run scraper
         scraper = AITrainingDataScraper(actor_input)
-        await scraper.run()
+        
+        try:
+            await scraper.run()
+        except Exception as e:
+            Actor.log.exception(f"❌ Actor failed with unhandled exception: {e}")
+            
+        # Final Summary for visibility (Priority 3)
+        if scraper.crawled_count == 0:
+             Actor.log.error("❌ Crawl completed but 0 pages were processed. Check your startUrls and proxy settings.")
+        elif scraper.total_chunks == 0:
+             Actor.log.warning(f"⚠️ Crawled {scraper.crawled_count} pages but generated 0 chunks. \n"
+                               "Possible causes: \n"
+                               "1) removeElements is too broad (e.g. removing 'body') \n"
+                               "2) Content classification skipped all pages as 'index' (check link_density) \n"
+                               "3) Pages had no text content.")
+        else:
+             Actor.log.info(f"📊 Final Summary: {scraper.crawled_count} pages crawled, {scraper.total_chunks} chunks generated.")
