@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, List
 import re
 
 from apify import Actor
+from crawlee import Request
 from crawlee.crawlers import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
 from crawlee.crawlers import PlaywrightCrawler, PlaywrightCrawlingContext
 from crawlee.browsers import BrowserPool, PlaywrightBrowserPlugin
@@ -127,7 +128,7 @@ class AITrainingDataScraper:
         for url_item in self.start_urls:
             url = url_item.get("url") if isinstance(url_item, dict) else url_item
             if url and is_valid_url(url):
-                start_requests.append({"url": url, "user_data": {"depth": 0}})
+                start_requests.append(Request(url=url, user_data={"depth": 0}))
                 Actor.log.info(f"📍 Added start URL: {url}")
             else:
                 Actor.log.warning(f"⚠️ Invalid start URL skipped: {url_item}")
@@ -335,7 +336,7 @@ class AITrainingDataScraper:
              
              # Convert to Crawlee request objects
              requests = [
-                 {"url": link, "user_data": {"depth": current_depth + 1}} 
+                 Request(url=link, user_data={"depth": current_depth + 1}) 
                  for link in unique_links
              ]
              
