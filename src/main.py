@@ -42,9 +42,9 @@ class AITrainingDataScraper:
         self.input = actor_input
         self.start_urls = actor_input.get("startUrls", [])
         self.crawler_type = actor_input.get("crawlerType", "cheerio")
-        self.max_pages = actor_input.get("maxCrawlPages", 100)
-        self.max_depth = actor_input.get("maxCrawlDepth", 20)
-        self.chunking_strategy = actor_input.get("chunkingStrategy", "semantic")
+        self.max_pages = actor_input.get("maxCrawlPages", 1)
+        self.max_depth = actor_input.get("maxCrawlDepth", 0)
+        self.chunking_strategy = actor_input.get("chunkingStrategy", "fixed_token")
         self.chunk_size = actor_input.get("chunkSize", 512)
         self.chunk_overlap = actor_input.get("chunkOverlap", 100)
         self.output_format = actor_input.get("outputFormat", "vector_ready")
@@ -52,14 +52,14 @@ class AITrainingDataScraper:
             "nav", "header", "footer", ".advertisement", 
             "#cookie-banner", ".sidebar"
         ])
-        self.include_metadata = actor_input.get("includeMetadata", True)
+        self.include_metadata = actor_input.get("includeMetadata", False)
         self.extract_links = actor_input.get("extractLinks", False)
         self.save_screenshots = actor_input.get("saveScreenshots", False)
         self.respect_robots = actor_input.get("respectRobotsTxt", True)
-        self.max_concurrency = actor_input.get("maxConcurrency", 5)
+        self.max_concurrency = actor_input.get("maxConcurrency", 2)
         self.request_timeout = actor_input.get("requestTimeout", 30)
         self.proxy_config = actor_input.get("proxyConfiguration", {"useApifyProxy": True})
-        self.save_index_pages = actor_input.get("saveIndexPages", True)
+        self.save_index_pages = actor_input.get("saveIndexPages", False)
         self.url_patterns = actor_input.get("urlPatterns", [])
         self.exclude_patterns = actor_input.get("excludeUrlPatterns", [
             "**/login**", "**/signup**", "**/register**", 
